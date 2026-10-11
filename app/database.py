@@ -64,3 +64,22 @@ class Database:
     def delete_task(self, tid):
         with self.conn:
             self.conn.execute('DELETE FROM tasks WHERE id=?', (tid,))
+
+    def import_starter_assessments(self):
+        """Optional personal sample data; skip matching records so imports are repeatable."""
+        examples = [
+            ('NET502', 'Scenario-based theory', '2026-10-19T09:00:00', 'Theory assessment.'),
+            ('DAT502', 'Database report', '2026-11-06T17:00:00', 'Report submission.'),
+            ('NET502', 'Practical project and report', '2026-11-11T11:00:00', 'Practical project and report submission.'),
+            ('SDV602', 'Assessment 2 — Design, implementation and reflection', '2026-11-13T12:00:00', 'Due 13 November 2026. Exact submission time was not supplied; 12:00 is a calendar placeholder. Confirm the actual deadline.'),
+            ('DAT502', 'Database test', '2026-11-13T09:00:00', 'Test runs 9:00 AM–12:00 PM.'),
+            ('WEB701', 'Development assessment', '2026-11-18T12:00:00', 'Development submission, Wednesday at midday.'),
+        ]
+        added = 0
+        with self.conn:
+            for course, title, due, notes in examples:
+                exists = self.conn.execute('SELECT 1 FROM assignments WHERE course=? AND title=? AND due=?', (course,title,due)).fetchone()
+                if not exists:
+                    self.conn.execute('INSERT INTO assignments(course,title,due,notes) VALUES (?,?,?,?)', (course,title,due,notes))
+                    added += 1
+        return added

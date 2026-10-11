@@ -8,21 +8,32 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QComboBox, QProgressBar, QTabWidget)
 from app.database import Database
 
+APP_VERSION = '1.1.0'
 STATUSES = ('To Do', 'In Progress', 'Completed')
+COURSE_COLORS = {'NET502':'#38bdf8','DAT502':'#a78bfa','SDV602':'#34d399','WEB701':'#fb923c'}
 STYLE = '''
-QWidget { background:#111827; color:#e5e7eb; font: 13px 'Segoe UI'; }
-QLabel#heading { font-size:24px; font-weight:700; padding:5px 0; }
-QFrame#card { background:#1f2937; border:1px solid #374151; border-radius:10px; }
+QWidget { background:#0b1220; color:#e6edf8; font: 13px 'Segoe UI'; }
+QLabel#heading { font-size:29px; font-weight:750; padding:8px 0 2px 0; }
+QLabel#muted { color:#9cabc1; }
+QLabel#metric { font-size:26px; font-weight:750; }
+QFrame#card { background:#172236; border:1px solid #2a3b55; border-radius:13px; }
 QFrame#card QLabel { background:transparent; }
-QPushButton { background:#374151; border:0; border-radius:7px; padding:9px 12px; }
-QPushButton:hover { background:#4b5563; }
-QPushButton#primary { background:#2563eb; font-weight:600; }
-QPushButton#primary:hover { background:#1d4ed8; }
-QLineEdit,QTextEdit,QComboBox,QDateTimeEdit { background:#1f2937; border:1px solid #4b5563; border-radius:6px; padding:7px; }
-QProgressBar { background:#374151; border:0; border-radius:5px; text-align:center; height:15px; }
-QProgressBar::chunk { background:#22c55e; border-radius:5px; }
-QScrollArea { border:0; }
-QCalendarWidget QWidget { alternate-background-color:#1f2937; }
+QFrame#sidebar { background:#101b2d; border:1px solid #263751; border-radius:14px; }
+QFrame#sidebar QLabel { background:transparent; }
+QPushButton { background:#253650; border:1px solid #30435f; border-radius:9px; padding:10px 13px; font-weight:550; }
+QPushButton:hover { background:#334969; }
+QPushButton#primary { background:#3575ed; border:1px solid #4c88fa; color:white; font-weight:700; }
+QPushButton#primary:hover { background:#2865d5; }
+QPushButton#nav { text-align:left; padding:12px 14px; background:transparent; border:0; }
+QPushButton#nav:hover { background:#243853; }
+QPushButton#nav[active="true"] { background:#27466f; color:#b6d6ff; }
+QLineEdit,QTextEdit,QComboBox,QDateTimeEdit { background:#101a2b; border:1px solid #3b4c67; border-radius:8px; padding:8px; }
+QProgressBar { background:#26354b; border:0; border-radius:6px; text-align:center; height:17px; font-weight:650; }
+QProgressBar::chunk { background:#38bda6; border-radius:6px; }
+QScrollArea { border:0; background:transparent; }
+QCalendarWidget QWidget { alternate-background-color:#1a2a40; }
+QCalendarWidget QToolButton { background:#253650; }
+QDialog { background:#101b2d; }
 '''
 
 def clear(layout):
@@ -109,21 +120,23 @@ class DropColumn(QFrame):
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.db=Database(); self.setWindowTitle('Assessment Scheduler v1.0.0')
+        super().__init__(); self.db=Database(); self.setWindowTitle(f'Assessment Scheduler v{APP_VERSION}')
         self.resize(1180,760); self.selected=None; self.page='Dashboard'
-        base=QWidget(); self.setCentralWidget(base); root=QHBoxLayout(base)
-        sidebar=QFrame(); sidebar.setFixedWidth(205); sidebar.setObjectName('card')
-        nav=QVBoxLayout(sidebar); logo=QLabel('ASSESSMENT\nSCHEDULER'); logo.setStyleSheet('font-size:18px;font-weight:700;color:#93c5fd;'); nav.addWidget(logo)
+        base=QWidget(); self.setCentralWidget(base); root=QHBoxLayout(base); root.setContentsMargins(16,16,16,16); root.setSpacing(18)
+        sidebar=QFrame(); sidebar.setFixedWidth(220); sidebar.setObjectName('sidebar')
+        nav=QVBoxLayout(sidebar); nav.setContentsMargins(14,20,14,14); nav.setSpacing(7); logo=QLabel('✦  ASSESSMENT\n     SCHEDULER'); logo.setStyleSheet('font-size:17px;font-weight:800;color:#9dccff;padding:10px 0 24px 0;'); nav.addWidget(logo); self.nav_buttons={}
         for name in ('Dashboard','Kanban Board','Calendar','Assignments'):
-            btn=QPushButton(name); btn.clicked.connect(lambda _,n=name:self.show_page(n)); nav.addWidget(btn)
-        nav.addStretch(); root.addWidget(sidebar)
+            btn=QPushButton(name); btn.setObjectName('nav'); btn.clicked.connect(lambda _,n=name:self.show_page(n)); nav.addWidget(btn); self.nav_buttons[name]=btn
+        nav.addStretch(); version=QLabel(f'VERSION {APP_VERSION}  •  LOCAL & PRIVATE'); version.setObjectName('muted'); version.setStyleSheet('font-size:10px;color:#8ca1bc;'); nav.addWidget(version); root.addWidget(sidebar)
         self.content=QScrollArea(); self.content.setWidgetResizable(True)
-        self.host=QWidget(); self.body=QVBoxLayout(self.host); self.body.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.host=QWidget(); self.body=QVBoxLayout(self.host); self.body.setContentsMargins(10,4,10,16); self.body.setSpacing(14); self.body.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.content.setWidget(self.host); root.addWidget(self.content,1)
         self.show_page('Dashboard')
 
     def show_page(self,page,aid=None):
         self.page=page; self.selected=aid if aid is not None else self.selected
+        for name,button in self.nav_buttons.items():
+            button.setProperty('active', 'true' if name==page else 'false'); button.style().unpolish(button); button.style().polish(button)
         clear(self.body); self.detail=None
         heading=QLabel(page); heading.setObjectName('heading'); self.body.addWidget(heading)
         getattr(self,'page_'+{'Dashboard':'dashboard','Kanban Board':'kanban','Calendar':'calendar','Assignments':'assignments'}[page])()
@@ -131,9 +144,9 @@ class MainWindow(QMainWindow):
     def refresh(self): self.show_page(self.page)
 
     def assignment_card(self,row,open_button=True):
-        f=card(); f.layout().addWidget(QLabel(f"{row['course']}  ·  {row['title']}"))
+        f=card(); course=QLabel(row['course']); course.setStyleSheet(f"color:{COURSE_COLORS.get(row['course'],'#9dccff')};font-size:12px;font-weight:800;letter-spacing:1px;"); f.layout().addWidget(course); title=QLabel(row['title']); title.setWordWrap(True); title.setStyleSheet('font-size:16px;font-weight:700;'); f.layout().addWidget(title)
         due=datetime.fromisoformat(row['due'])
-        f.layout().addWidget(QLabel(f"Due: {due:%d %b %Y, %I:%M %p}   |   {row['completed']}/{row['total']} tasks"))
+        f.layout().addWidget(QLabel(f"Due {due:%d %b %Y, %I:%M %p}  ·  {row['completed']}/{row['total']} tasks completed"))
         f.layout().addWidget(progress(row))
         if open_button:
             btn=QPushButton('Open assignment →'); btn.clicked.connect(lambda _,aid=row['id']:self.show_page('Assignments',aid)); f.layout().addWidget(btn)
@@ -143,13 +156,34 @@ class MainWindow(QMainWindow):
         rows=self.db.assignments(); now=datetime.now()
         upcoming=[r for r in rows if datetime.fromisoformat(r['due'])>=now]
         total=sum(r['total'] for r in rows); done=sum(r['completed'] for r in rows)
-        stats=QLabel(f"{len(rows)} assignments   •   {len(upcoming)} upcoming   •   {done}/{total} tasks completed")
-        self.body.addWidget(stats)
-        p=QProgressBar(); p.setValue(round(done/total*100) if total else 0); self.body.addWidget(p)
-        self.body.addWidget(QLabel('Upcoming deadlines'))
+        intro=QLabel('Your assessments, at a glance. Stay focused on what matters next.')
+        intro.setObjectName('muted'); self.body.addWidget(intro)
+        metrics=QHBoxLayout(); metrics.setSpacing(12)
+        for label,value,accent in [('ASSIGNMENTS',str(len(rows)),'#93c5fd'),('UPCOMING',str(len(upcoming)),'#fbbf24'),('TASKS DONE',f'{done}/{total}','#6ee7b7')]:
+            tile=card(); small=QLabel(label); small.setStyleSheet('color:#9cabc1;font-size:11px;font-weight:700;letter-spacing:1px;'); tile.layout().addWidget(small)
+            big=QLabel(value); big.setObjectName('metric'); big.setStyleSheet(f'color:{accent};font-size:27px;font-weight:750;'); tile.layout().addWidget(big); metrics.addWidget(tile,1)
+        self.body.addLayout(metrics)
+        section=card(); section.layout().addWidget(QLabel('OVERALL TASK PROGRESS'))
+        bar=QProgressBar(); bar.setValue(round(done/total*100) if total else 0); section.layout().addWidget(bar); self.body.addWidget(section)
+        toolbar=QHBoxLayout(); heading=QLabel('Upcoming deadlines'); heading.setStyleSheet('font-size:18px;font-weight:700;'); toolbar.addWidget(heading); toolbar.addStretch()
+        add=QPushButton('+ New assignment'); add.setObjectName('primary'); add.clicked.connect(self.new_assignment); toolbar.addWidget(add)
+        self.body.addLayout(toolbar)
         for row in upcoming[:8]: self.body.addWidget(self.assignment_card(row))
-        if not upcoming: self.body.addWidget(QLabel('No upcoming deadlines. Add an assignment to get started.'))
-        add=QPushButton('+ New assignment'); add.setObjectName('primary'); add.clicked.connect(self.new_assignment); self.body.addWidget(add)
+        if not upcoming:
+            empty=QLabel('No upcoming deadlines yet. Add an assignment or import your assessment dates.')
+            empty.setObjectName('muted'); self.body.addWidget(empty)
+        sample=QPushButton('Import my 2026 assessment dates (6)')
+        sample.clicked.connect(self.import_assessments); self.body.addWidget(sample)
+
+    def import_assessments(self):
+        answer=QMessageBox.question(self,'Import assessment dates',
+            'Add the six NET502, DAT502, SDV602 and WEB701 assessment deadlines?\n\n'
+            'Existing assignments will be kept. Matching imported assignments will not be duplicated.\n\n'
+            'SDV602 has no confirmed submission time; a 12:00 placeholder will be used and clearly marked in its notes.')
+        if answer==QMessageBox.StandardButton.Yes:
+            count=self.db.import_starter_assessments()
+            QMessageBox.information(self,'Import complete',f'{count} assessment(s) added. Existing data was preserved.')
+            self.refresh()
 
     def page_kanban(self):
         hint=QLabel('Drag task cards between columns, or use the status dropdown.'); self.body.addWidget(hint)

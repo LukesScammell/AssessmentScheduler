@@ -58,3 +58,17 @@ The executable is unsigned. Windows SmartScreen may warn users when downloading 
 ## License
 
 MIT.
+
+## v1.1.0 — Dashboard refresh and optional assessment import
+
+The dashboard has refreshed styling, three summary cards, course-coloured assignment cards, and an overall progress bar. The Dashboard includes **Import my 2026 assessment dates (6)**, an optional, confirmation-based import of NET502, DAT502, SDV602, and WEB701 deadlines. The import does not erase existing data and skips exact matching course/title/date records.
+
+**Important:** The SDV602 deadline supplied was 13 November 2026 without a time. The import uses 12:00 as an editable calendar placeholder, clearly labelled in the assignment notes. Confirm and correct it before relying on reminders.
+
+### Updating from v1.0.0
+
+Keep the same installation directory and installer AppId. Application data remains in the per-user `AssessmentScheduler/assessments.db` folder under LOCALAPPDATA, separate from installed program files. Back up this file before updating. The import is optional; existing users can select it from the Dashboard.
+
+### Publish v1.1.0
+
+Commit and push the updated project to `main`. After testing a manually triggered Windows workflow build, tag the updated commit `v1.1.0` and push the tag to trigger the GitHub Release workflow.
