@@ -22,7 +22,17 @@ class Database:
                 CHECK(status IN ('To Do','In Progress','Completed'))
         );
         ''')
+        self.conn.execute('CREATE TABLE IF NOT EXISTS courses (code TEXT PRIMARY KEY)')
+        for code in ('NET502','WEB701','DAT502','SDV602'):
+            self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(code,))
+        self.conn.execute('INSERT OR IGNORE INTO courses(code) SELECT DISTINCT course FROM assignments')
         self.conn.commit()
+
+    def courses(self):
+        return [r['code'] for r in self.conn.execute('SELECT code FROM courses ORDER BY code')]
+
+    def add_course(self,code):
+        with self.conn: self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(code,))
 
     def assignments(self):
         return self.conn.execute('''SELECT a.*, COUNT(t.id) total,
@@ -41,10 +51,12 @@ class Database:
 
     def add_assignment(self, course, title, due, notes=''):
         with self.conn:
+            self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(course,))
             self.conn.execute('INSERT INTO assignments(course,title,due,notes) VALUES (?,?,?,?)', (course,title,due,notes))
 
     def update_assignment(self, aid, course, title, due, notes):
         with self.conn:
+            self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(course,))
             self.conn.execute('UPDATE assignments SET course=?,title=?,due=?,notes=? WHERE id=?', (course,title,due,notes,aid))
 
     def delete_assignment(self, aid):
@@ -78,6 +90,7 @@ class Database:
         added = 0
         with self.conn:
             for course, title, due, notes in examples:
+                self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(course,))
                 exists = self.conn.execute('SELECT 1 FROM assignments WHERE course=? AND title=? AND due=?', (course,title,due)).fetchone()
                 if not exists:
                     self.conn.execute('INSERT INTO assignments(course,title,due,notes) VALUES (?,?,?,?)', (course,title,due,notes))

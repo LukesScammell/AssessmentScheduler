@@ -43,7 +43,7 @@ git push origin v1.0.0
 
 5. Wait for **Actions > Windows release** to finish. The workflow creates a downloadable installer on **Releases**. The Actions run also provides an installer artifact.
 
-For later updates, change code, commit, and push a new tag like `v1.1.0`. The installer uses the same app ID and installation directory, so it updates application files. The user database is preserved in `%LOCALAPPDATA%\AssessmentScheduler\assessments.db`.
+For later updates, change code, commit, and push a new tag like `v1.2.0`. The installer uses the same app ID and installation directory, so it updates application files. The user database is preserved in `%LOCALAPPDATA%\AssessmentScheduler\assessments.db`.
 
 **Important:** Back up user data before any future database schema migrations. The current version does not include automatic in-app update checks, notifications, or automatic backups. GitHub Releases provides manual downloadable updates.
 
@@ -59,7 +59,7 @@ The executable is unsigned. Windows SmartScreen may warn users when downloading 
 
 MIT.
 
-## v1.1.0 — Dashboard refresh and optional assessment import
+## v1.2.0 — Dashboard refresh and optional assessment import
 
 The dashboard has refreshed styling, three summary cards, course-coloured assignment cards, and an overall progress bar. The Dashboard includes **Import my 2026 assessment dates (6)**, an optional, confirmation-based import of NET502, DAT502, SDV602, and WEB701 deadlines. The import does not erase existing data and skips exact matching course/title/date records.
 
@@ -69,6 +69,15 @@ The dashboard has refreshed styling, three summary cards, course-coloured assign
 
 Keep the same installation directory and installer AppId. Application data remains in the per-user `AssessmentScheduler/assessments.db` folder under LOCALAPPDATA, separate from installed program files. Back up this file before updating. The import is optional; existing users can select it from the Dashboard.
 
-### Publish v1.1.0
+### Publish v1.2.0
 
-Commit and push the updated project to `main`. After testing a manually triggered Windows workflow build, tag the updated commit `v1.1.0` and push the tag to trigger the GitHub Release workflow.
+Commit and push the updated project to `main`. After testing a manually triggered Windows workflow build, tag the updated commit `v1.2.0` and push the tag to trigger the GitHub Release workflow.
+
+
+## Version 1.2.0
+
+- Dedicated course pages in the sidebar for NET502, WEB701, DAT502, and SDV602.
+- Each course page displays only its assignments, task management, and course progress.
+- Add additional course pages from the sidebar.
+- Filter the shared Kanban board, calendar, and assignments overview by course.
+- Existing local SQLite data is retained and the installer AppId remains unchanged.
