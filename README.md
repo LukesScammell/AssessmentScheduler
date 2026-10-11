@@ -32,3 +32,10 @@ python main.py
 The GitHub Actions workflow is in `.github/workflows/release.yml`. Run it manually on `main` to test before tagging. It reads the application version from `main.py` for manual builds. After testing, publish with `git tag v1.3.0` and `git push origin v1.3.0`.
 
 The Inno Setup `AppId` is intentionally unchanged so installing a new version updates the existing app rather than creating a second application. Data is stored in `%LOCALAPPDATA%\AssessmentScheduler\assessments.db`, outside the installation directory.
+
+### v1.4.0: Completed assessments and marks
+When adding an assessment, choose its status (including **Completed** for past work), enter its historical deadline, and optionally enter its assessment weighting and marks earned / marks possible. You can also leave the grade blank while waiting for results. Existing assessments can be edited to change their status, and their marks can be entered from **Grades** or **Set grade** on the class page.
+
+For example, **58/70** is **82.86%**. At a **40%** course weight, that earns **33.14 percentage points** toward the final course total. Previously stored percentage-only grades are retained until you explicitly replace them with marks.
+
+**Upgrade safety:** Use **Settings → Back up all app data** before installing a test build. The SQLite database is stored outside the application installation folder and the Inno Setup AppId is unchanged.

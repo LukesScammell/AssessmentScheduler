@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QComboBox, QProgressBar, QTabWidget, QInputDialog, QSpinBox, QDoubleSpinBox, QCheckBox, QFileDialog, QSystemTrayIcon)
 from app.database import Database
 
-APP_VERSION = '1.3.0'
+APP_VERSION = '1.4.0'
 STATUSES = ('To Do', 'In Progress', 'Completed')
 COURSE_COLORS = {'NET502':'#38bdf8','DAT502':'#a78bfa','SDV602':'#34d399','WEB701':'#fb923c'}
 STYLE = '''
@@ -65,8 +65,17 @@ class AssignmentDialog(QDialog):
         self.due.setDisplayFormat('dd MMM yyyy HH:mm')
         self.due.setDateTime(datetime.fromisoformat(record['due']) if record else datetime.now().replace(second=0,microsecond=0))
         self.notes=QTextEdit(record['notes'] if record else '')
+        self.status=QComboBox(); self.status.addItems(['Not Started','In Progress','Completed'])
+        if record: self.status.setCurrentText(record['status'])
         layout.addRow('Course',self.course); layout.addRow('Assessment',self.title)
-        layout.addRow('Deadline',self.due); layout.addRow('Notes',self.notes)
+        layout.addRow('Deadline',self.due); layout.addRow('Status',self.status); layout.addRow('Notes',self.notes)
+        if not record:
+            self.weight=QDoubleSpinBox(); self.weight.setRange(0,100); self.weight.setDecimals(2); self.weight.setSuffix('%')
+            self.has_grade=QCheckBox('Grade received (optional)')
+            self.earned=QDoubleSpinBox(); self.earned.setRange(0,100000); self.earned.setDecimals(2)
+            self.possible=QDoubleSpinBox(); self.possible.setRange(0.01,100000); self.possible.setValue(100); self.possible.setDecimals(2)
+            layout.addRow('Assessment weight',self.weight); layout.addRow(self.has_grade)
+            layout.addRow('Marks earned',self.earned); layout.addRow('Marks possible',self.possible)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.validate); buttons.rejected.connect(self.reject); layout.addRow(buttons)
 
@@ -76,7 +85,7 @@ class AssignmentDialog(QDialog):
         else: self.accept()
 
     def values(self):
-        return (self.course.text().strip(),self.title.text().strip(),self.due.dateTime().toString('yyyy-MM-ddTHH:mm:ss'),self.notes.toPlainText())
+        return (self.course.text().strip(),self.title.text().strip(),self.due.dateTime().toString('yyyy-MM-ddTHH:mm:ss'),self.notes.toPlainText(),self.status.currentText())
 
 class TaskCard(QFrame):
     def __init__(self, task, owner):
@@ -174,6 +183,10 @@ class MainWindow(QMainWindow):
     def assignment_card(self,row,open_button=True):
         f=card(); course=QLabel(row['course']); course.setStyleSheet(f"color:{COURSE_COLORS.get(row['course'],'#9dccff')};font-size:12px;font-weight:800;letter-spacing:1px;"); f.layout().addWidget(course); title=QLabel(row['title']); title.setWordWrap(True); title.setStyleSheet('font-size:16px;font-weight:700;'); f.layout().addWidget(title)
         due=datetime.fromisoformat(row['due'])
+        f.layout().addWidget(QLabel('Status: '+row['status']))
+        if row['grade'] is not None:
+            grade_text=(f"{row['marks_earned']:g}/{row['marks_possible']:g} marks" if row['marks_possible'] else 'Percentage grade')
+            f.layout().addWidget(QLabel(f"Grade: {grade_text} ({row['grade']:.2f}%)"))
         f.layout().addWidget(QLabel(f"Due {due:%d %b %Y, %I:%M %p}  ·  {row['completed']}/{row['total']} tasks completed"))
         f.layout().addWidget(progress(row))
         if open_button:
@@ -182,7 +195,7 @@ class MainWindow(QMainWindow):
 
     def page_dashboard(self):
         rows=self.db.assignments(); now=datetime.now()
-        upcoming=[r for r in rows if datetime.fromisoformat(r['due'])>=now]
+        upcoming=[r for r in rows if r['status']!='Completed' and datetime.fromisoformat(r['due'])>=now]
         total=sum(r['total'] for r in rows); done=sum(r['completed'] for r in rows)
         intro=QLabel('Your assessments, at a glance. Stay focused on what matters next.')
         intro.setObjectName('muted'); self.body.addWidget(intro)
@@ -254,7 +267,7 @@ class MainWindow(QMainWindow):
         self.course_selector(self.set_course_filter)
         add=QPushButton('+ New assignment'); add.setObjectName('primary'); add.clicked.connect(self.new_assignment); self.body.addWidget(add)
         rows=[r for r in self.db.assignments() if self.course_filter=='All courses' or r['course']==self.course_filter]
-        for row in rows:
+        for row in sorted(rows,key=lambda r:(r['status']=='Completed',r['due'])):
             f=self.assignment_card(row,False)
             buttons=QHBoxLayout()
             for label,callback in [('Open tasks',lambda aid=row['id']:self.show_details(aid)),
@@ -286,15 +299,23 @@ class MainWindow(QMainWindow):
         note_box=card(); note_box.layout().addWidget(QLabel('CLASS NOTES'))
         notes=QTextEdit(); notes.setPlaceholderText('Class notes, links, revision topics…'); notes.setPlainText(self.db.course_note(course)); note_box.layout().addWidget(notes)
         save=QPushButton('Save class notes'); save.clicked.connect(lambda:self.save_notes(course,notes.toPlainText())); note_box.layout().addWidget(save); self.body.addWidget(note_box)
-        for row in rows:
-            tile=self.assignment_card(row,False)
-            actions=QHBoxLayout()
-            for label,action in [('Manage tasks',lambda aid=row['id']:self.show_details(aid)),
-                                 ('Edit',lambda aid=row['id']:self.edit_assignment(aid)),
-                                 ('Delete',lambda aid=row['id']:self.remove_assignment(aid))]:
-                button=QPushButton(label); button.clicked.connect(lambda _,cb=action:cb()); actions.addWidget(button)
-            tile.layout().addLayout(actions); self.body.addWidget(tile)
+        for label,subset in [('UPCOMING / IN PROGRESS',[r for r in rows if r['status']!='Completed']),('COMPLETED ASSESSMENTS',[r for r in rows if r['status']=='Completed'])]:
+            if not subset: continue
+            group_heading=QLabel(label); group_heading.setObjectName('section'); self.body.addWidget(group_heading)
+            for row in subset:
+                self.body.addWidget(self.course_assignment_card(row))
         if self.selected and any(r['id']==self.selected for r in rows): self.show_details(self.selected)
+
+    def course_assignment_card(self,row):
+        tile=self.assignment_card(row,False)
+        actions=QHBoxLayout()
+        for label,action in [('Manage tasks',lambda aid=row['id']:self.show_details(aid)),
+                             ('Edit',lambda aid=row['id']:self.edit_assignment(aid)),
+                             ('Set grade',lambda aid=row['id']:self.edit_grade(aid)),
+                             ('Delete',lambda aid=row['id']:self.remove_assignment(aid))]:
+            button=QPushButton(label); button.clicked.connect(lambda _,cb=action:cb()); actions.addWidget(button)
+        tile.layout().addLayout(actions)
+        return tile
 
     def save_notes(self,course,text):
         self.db.save_course_note(course,text); QMessageBox.information(self,'Notes saved','Class notes saved successfully.')
@@ -334,7 +355,12 @@ class MainWindow(QMainWindow):
     def new_assignment(self,course=None):
         dlg=AssignmentDialog(self)
         if course: dlg.course.setText(course)
-        if dlg.exec(): self.db.add_assignment(*dlg.values()); self.refresh()
+        if dlg.exec():
+            if hasattr(dlg,'has_grade') and dlg.has_grade.isChecked() and dlg.earned.value()>dlg.possible.value():
+                QMessageBox.warning(self,'Invalid marks','Marks earned cannot exceed marks possible.'); return
+            aid=self.db.add_assignment(*dlg.values())
+            self.db.save_marks(aid,dlg.weight.value(),dlg.earned.value() if dlg.has_grade.isChecked() else None,dlg.possible.value() if dlg.has_grade.isChecked() else None)
+            self.refresh()
 
     def edit_assignment(self,aid):
         record=self.db.assignment(aid)
@@ -419,30 +445,46 @@ class MainWindow(QMainWindow):
     def delete_study_plan(self,pid): self.db.delete_plan(pid); self.refresh()
 
     def page_grades(self):
-        self.body.addWidget(QLabel('Enter assessment weights and marks (0–100%). Unmarked assessments are excluded from the current average.'))
+        self.body.addWidget(QLabel('Enter marks earned / marks possible and the assessment weight. Previously saved percentage-only grades are preserved.'))
         for course in self.courses():
             rows=[a for a in self.db.assignments() if a['course']==course]
             if not rows: continue
             heading=QLabel(course); heading.setStyleSheet('font-size:20px;font-weight:700;'); self.body.addWidget(heading)
-            weights=sum(a['weight'] for a in rows if a['grade'] is not None)
-            weighted=sum(a['weight']*a['grade'] for a in rows if a['grade'] is not None)
+            graded=[a for a in rows if a['grade'] is not None and a['weight']>0]
+            weights=sum(a['weight'] for a in graded)
+            weighted=sum(a['weight']*a['grade']/100 for a in graded)
             total_weights=sum(a['weight'] for a in rows)
-            self.body.addWidget(QLabel(f"Current weighted average: {weighted/weights:.1f}%" if weights else 'No graded assessments yet'))
+            self.body.addWidget(QLabel(f'Average across graded assessment weights: {weighted/weights*100:.2f}%' if weights else 'No weighted grades recorded yet'))
+            self.body.addWidget(QLabel(f'Points earned toward course total: {weighted:.2f} / 100 (assuming weights total 100%)'))
             self.body.addWidget(QLabel(f'Total assigned assessment weight: {total_weights:g}% (target: 100%)'))
             for a in rows:
                 row=QHBoxLayout(); row.addWidget(QLabel(a['title']),1)
-                row.addWidget(QLabel(f"Weight {a['weight']:g}% · Mark {a['grade'] if a['grade'] is not None else 'Not graded'}"))
-                edit=QPushButton('Set grade'); edit.clicked.connect(lambda _,aid=a['id']:self.edit_grade(aid)); row.addWidget(edit); self.body.addLayout(row)
+                if a['grade'] is None: mark='Not graded'
+                elif a['marks_possible'] is not None: mark=f"{a['marks_earned']:g}/{a['marks_possible']:g} ({a['grade']:.2f}%)"
+                else: mark=f"{a['grade']:.2f}% (legacy grade)"
+                row.addWidget(QLabel(f"Weight {a['weight']:g}% · {mark} · {a['status']}"))
+                edit=QPushButton('Set marks'); edit.clicked.connect(lambda _,aid=a['id']:self.edit_grade(aid)); row.addWidget(edit); self.body.addLayout(row)
 
     def edit_grade(self,aid):
-        a=self.db.assignment(aid); dlg=QDialog(self); dlg.setWindowTitle('Assessment grade'); form=QFormLayout(dlg)
-        weight=QDoubleSpinBox(); weight.setRange(0,100); weight.setDecimals(1); weight.setValue(a['weight']); weight.setSuffix('%')
-        graded=QCheckBox('Mark has been received'); graded.setChecked(a['grade'] is not None)
-        grade=QDoubleSpinBox(); grade.setRange(0,100); grade.setDecimals(1); grade.setValue(a['grade'] or 0); grade.setSuffix('%')
-        form.addRow('Assessment weight',weight); form.addRow(graded); form.addRow('Mark',grade)
+        a=self.db.assignment(aid); dlg=QDialog(self); dlg.setWindowTitle('Assessment marks'); form=QFormLayout(dlg)
+        weight=QDoubleSpinBox(); weight.setRange(0,100); weight.setDecimals(2); weight.setValue(a['weight']); weight.setSuffix('%')
+        graded=QCheckBox('Grade has been received'); graded.setChecked(a['grade'] is not None)
+        earned=QDoubleSpinBox(); earned.setRange(0,100000); earned.setDecimals(2)
+        possible=QDoubleSpinBox(); possible.setRange(0.01,100000); possible.setDecimals(2); possible.setValue(a['marks_possible'] if a['marks_possible'] is not None else 100)
+        earned.setValue(a['marks_earned'] if a['marks_earned'] is not None else (a['grade'] or 0))
+        status=QComboBox(); status.addItems(['Not Started','In Progress','Completed']); status.setCurrentText(a['status'])
+        form.addRow('Assessment weight',weight); form.addRow('Assessment status',status); form.addRow(graded)
+        form.addRow('Marks earned',earned); form.addRow('Marks possible',possible)
+        if a['grade'] is not None and a['marks_possible'] is None:
+            form.addRow(QLabel('Existing percentage-only grade: edit marks to replace it.'))
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dlg.accept); buttons.rejected.connect(dlg.reject); form.addRow(buttons)
-        if dlg.exec(): self.db.save_grade(aid,weight.value(),grade.value() if graded.isChecked() else None); self.refresh()
+        if dlg.exec():
+            try:
+                self.db.save_marks(aid,weight.value(),earned.value() if graded.isChecked() else None,possible.value() if graded.isChecked() else None)
+                self.db.set_assignment_status(aid,status.currentText())
+                self.refresh()
+            except ValueError as exc: QMessageBox.warning(self,'Invalid marks',str(exc))
 
     def page_settings(self):
         self.body.addWidget(QLabel('Appearance'))

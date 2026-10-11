@@ -30,6 +30,9 @@ class Database:
         self._column('tasks', 'due', "TEXT NOT NULL DEFAULT ''")
         self._column('assignments', 'weight', 'REAL NOT NULL DEFAULT 0')
         self._column('assignments', 'grade', 'REAL')
+        self._column('assignments', 'status', "TEXT NOT NULL DEFAULT 'Not Started'")
+        self._column('assignments', 'marks_earned', 'REAL')
+        self._column('assignments', 'marks_possible', 'REAL')
         self.conn.executescript('''
         CREATE TABLE IF NOT EXISTS course_notes (course TEXT PRIMARY KEY, content TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS study_sessions (id INTEGER PRIMARY KEY, course TEXT NOT NULL, started TEXT NOT NULL, minutes INTEGER NOT NULL CHECK(minutes > 0));
@@ -60,15 +63,16 @@ class Database:
                 JOIN assignments a ON a.id=t.assignment_id ORDER BY t.id''').fetchall()
         return self.conn.execute('SELECT * FROM tasks WHERE assignment_id=? ORDER BY id', (aid,)).fetchall()
 
-    def add_assignment(self, course, title, due, notes=''):
+    def add_assignment(self, course, title, due, notes='', status='Not Started'):
         with self.conn:
             self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(course,))
-            self.conn.execute('INSERT INTO assignments(course,title,due,notes) VALUES (?,?,?,?)', (course,title,due,notes))
+            cursor=self.conn.execute('INSERT INTO assignments(course,title,due,notes,status) VALUES (?,?,?,?,?)', (course,title,due,notes,status))
+            return cursor.lastrowid
 
-    def update_assignment(self, aid, course, title, due, notes):
+    def update_assignment(self, aid, course, title, due, notes, status='Not Started'):
         with self.conn:
             self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(course,))
-            self.conn.execute('UPDATE assignments SET course=?,title=?,due=?,notes=? WHERE id=?', (course,title,due,notes,aid))
+            self.conn.execute('UPDATE assignments SET course=?,title=?,due=?,notes=?,status=? WHERE id=?', (course,title,due,notes,status,aid))
 
     def delete_assignment(self, aid):
         with self.conn:
@@ -104,8 +108,28 @@ class Database:
         with self.conn: self.conn.execute('INSERT INTO course_notes(course,content) VALUES (?,?) ON CONFLICT(course) DO UPDATE SET content=excluded.content',(course,content))
 
     def save_grade(self, aid, weight, grade):
-        if not 0<=weight<=100 or (grade is not None and not 0<=grade<=100): raise ValueError('Grades and weights must be 0–100')
-        with self.conn: self.conn.execute('UPDATE assignments SET weight=?,grade=? WHERE id=?',(weight,grade,aid))
+        """Compatibility for older percentage-only callers."""
+        if not 0 <= weight <= 100 or (grade is not None and not 0 <= grade <= 100):
+            raise ValueError('Grades and weights must be 0–100')
+        with self.conn:
+            self.conn.execute('UPDATE assignments SET weight=?,grade=?,marks_earned=NULL,marks_possible=NULL WHERE id=?', (weight,grade,aid))
+
+    def save_marks(self, aid, weight, earned=None, possible=None):
+        if not 0 <= weight <= 100:
+            raise ValueError('Assessment weight must be between 0 and 100')
+        if (earned is None) != (possible is None):
+            raise ValueError('Both earned and possible marks are required')
+        if earned is not None and (possible <= 0 or earned < 0 or earned > possible):
+            raise ValueError('Marks must be between 0 and the maximum possible')
+        percentage = (earned / possible * 100) if earned is not None else None
+        with self.conn:
+            self.conn.execute('UPDATE assignments SET weight=?,grade=?,marks_earned=?,marks_possible=? WHERE id=?', (weight,percentage,earned,possible,aid))
+
+    def set_assignment_status(self, aid, status):
+        if status not in ('Not Started','In Progress','Completed'):
+            raise ValueError('Invalid assessment status')
+        with self.conn:
+            self.conn.execute('UPDATE assignments SET status=? WHERE id=?', (status,aid))
 
     def add_plan(self, course, title, start, minutes):
         with self.conn: self.conn.execute('INSERT INTO study_plan(course,title,start,minutes) VALUES (?,?,?,?)',(course,title,start,minutes))
@@ -134,6 +158,7 @@ class Database:
         from datetime import datetime
         found=[]
         for a in self.assignments():
+            if a['status']=='Completed': continue
             hours=(datetime.fromisoformat(a['due'])-now).total_seconds()/3600
             for threshold,limit in [('7 days',168),('3 days',72),('1 day',24),('3 hours',3)]:
                 if 0 <= hours <= limit and not self.conn.execute('SELECT 1 FROM notification_log WHERE assignment_id=? AND threshold=?',(a['id'],threshold)).fetchone():
