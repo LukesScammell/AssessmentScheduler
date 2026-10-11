@@ -26,6 +26,17 @@ class Database:
         for code in ('NET502','WEB701','DAT502','SDV602'):
             self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(code,))
         self.conn.execute('INSERT OR IGNORE INTO courses(code) SELECT DISTINCT course FROM assignments')
+        self._column('tasks', 'priority', "TEXT NOT NULL DEFAULT 'Medium'")
+        self._column('tasks', 'due', "TEXT NOT NULL DEFAULT ''")
+        self._column('assignments', 'weight', 'REAL NOT NULL DEFAULT 0')
+        self._column('assignments', 'grade', 'REAL')
+        self.conn.executescript('''
+        CREATE TABLE IF NOT EXISTS course_notes (course TEXT PRIMARY KEY, content TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS study_sessions (id INTEGER PRIMARY KEY, course TEXT NOT NULL, started TEXT NOT NULL, minutes INTEGER NOT NULL CHECK(minutes > 0));
+        CREATE TABLE IF NOT EXISTS study_plan (id INTEGER PRIMARY KEY, course TEXT NOT NULL, title TEXT NOT NULL, start TEXT NOT NULL, minutes INTEGER NOT NULL CHECK(minutes > 0));
+        CREATE TABLE IF NOT EXISTS notification_log (assignment_id INTEGER NOT NULL, threshold TEXT NOT NULL, PRIMARY KEY(assignment_id,threshold));
+        CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        ''')
         self.conn.commit()
 
     def courses(self):
@@ -76,6 +87,61 @@ class Database:
     def delete_task(self, tid):
         with self.conn:
             self.conn.execute('DELETE FROM tasks WHERE id=?', (tid,))
+
+    def _column(self, table, name, definition):
+        if name not in [r['name'] for r in self.conn.execute(f'PRAGMA table_info({table})')]:
+            self.conn.execute(f'ALTER TABLE {table} ADD COLUMN {name} {definition}')
+
+    def set_task_details(self, tid, priority, due):
+        if priority not in ('Low','Medium','High','Urgent'): raise ValueError('Invalid priority')
+        with self.conn: self.conn.execute('UPDATE tasks SET priority=?, due=? WHERE id=?',(priority,due,tid))
+
+    def course_note(self, course):
+        row=self.conn.execute('SELECT content FROM course_notes WHERE course=?',(course,)).fetchone()
+        return row['content'] if row else ''
+
+    def save_course_note(self, course, content):
+        with self.conn: self.conn.execute('INSERT INTO course_notes(course,content) VALUES (?,?) ON CONFLICT(course) DO UPDATE SET content=excluded.content',(course,content))
+
+    def save_grade(self, aid, weight, grade):
+        if not 0<=weight<=100 or (grade is not None and not 0<=grade<=100): raise ValueError('Grades and weights must be 0–100')
+        with self.conn: self.conn.execute('UPDATE assignments SET weight=?,grade=? WHERE id=?',(weight,grade,aid))
+
+    def add_plan(self, course, title, start, minutes):
+        with self.conn: self.conn.execute('INSERT INTO study_plan(course,title,start,minutes) VALUES (?,?,?,?)',(course,title,start,minutes))
+
+    def plans(self):
+        return self.conn.execute('SELECT * FROM study_plan ORDER BY start').fetchall()
+
+    def delete_plan(self, pid):
+        with self.conn: self.conn.execute('DELETE FROM study_plan WHERE id=?',(pid,))
+
+    def record_session(self, course, minutes):
+        from datetime import datetime
+        with self.conn: self.conn.execute('INSERT INTO study_sessions(course,started,minutes) VALUES (?,?,?)',(course,datetime.now().isoformat(timespec='seconds'),minutes))
+
+    def study_summary(self):
+        return self.conn.execute('SELECT course,SUM(minutes) AS minutes FROM study_sessions GROUP BY course').fetchall()
+
+    def preference(self, key, default=''):
+        row=self.conn.execute('SELECT value FROM preferences WHERE key=?',(key,)).fetchone()
+        return row['value'] if row else default
+
+    def set_preference(self, key, value):
+        with self.conn: self.conn.execute('INSERT INTO preferences(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',(key,str(value)))
+
+    def pending_deadlines(self, now):
+        from datetime import datetime
+        found=[]
+        for a in self.assignments():
+            hours=(datetime.fromisoformat(a['due'])-now).total_seconds()/3600
+            for threshold,limit in [('7 days',168),('3 days',72),('1 day',24),('3 hours',3)]:
+                if 0 <= hours <= limit and not self.conn.execute('SELECT 1 FROM notification_log WHERE assignment_id=? AND threshold=?',(a['id'],threshold)).fetchone():
+                    found.append((a,threshold))
+        return found
+
+    def mark_notified(self, aid, threshold):
+        with self.conn: self.conn.execute('INSERT OR IGNORE INTO notification_log VALUES (?,?)',(aid,threshold))
 
     def import_starter_assessments(self):
         """Optional personal sample data; skip matching records so imports are repeatable."""

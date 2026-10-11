@@ -1,6 +1,6 @@
 #define AppVersion GetEnv('APP_VERSION')
 #if AppVersion == ""
-  #define AppVersion "1.0.0"
+  #error "APP_VERSION is required. Set it from main.py or the GitHub release tag."
 #endif
 [Setup]
 AppId={{E4EAD203-3915-4F11-BC6A-7E46C4424DF8}
