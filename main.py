@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QComboBox, QProgressBar, QTabWidget, QInputDialog, QSpinBox, QDoubleSpinBox, QCheckBox, QFileDialog, QSystemTrayIcon)
 from app.database import Database
 
-APP_VERSION = '1.5.0'
+APP_VERSION = '1.6.0'
 STATUSES = ('To Do', 'In Progress', 'Completed')
 COURSE_COLORS = {'NET502':'#38bdf8','DAT502':'#a78bfa','SDV602':'#34d399','WEB701':'#fb923c'}
 STYLE = '''
@@ -49,9 +49,13 @@ def card():
     return f
 
 def progress(row):
+    """Assessment completion, independent of task progress."""
     p = QProgressBar(); p.setRange(0,100)
-    p.setValue(round(100*row['completed']/row['total']) if row['total'] else 0)
+    p.setValue(100 if row['status'] == 'Completed' else 0)
     return p
+
+def assessment_progress(rows):
+    return round(100 * sum(row['status'] == 'Completed' for row in rows) / len(rows)) if rows else 0
 
 class AssignmentDialog(QDialog):
     def __init__(self, parent, record=None):
@@ -188,6 +192,7 @@ class MainWindow(QMainWindow):
             grade_text=(f"{row['marks_earned']:g}/{row['marks_possible']:g} marks" if row['marks_possible'] else 'Percentage grade')
             f.layout().addWidget(QLabel(f"Grade: {grade_text} ({row['grade']:.2f}%)"))
         f.layout().addWidget(QLabel(f"Due {due:%d %b %Y, %I:%M %p}  ·  {row['completed']}/{row['total']} tasks completed"))
+        f.layout().addWidget(QLabel('Assessment completion'))
         f.layout().addWidget(progress(row))
         if open_button:
             btn=QPushButton('Open assignment →'); btn.clicked.connect(lambda _,aid=row['id']:self.show_page('Assignments',aid)); f.layout().addWidget(btn)
@@ -204,8 +209,8 @@ class MainWindow(QMainWindow):
             tile=card(); small=QLabel(label); small.setStyleSheet('color:#9cabc1;font-size:11px;font-weight:700;letter-spacing:1px;'); tile.layout().addWidget(small)
             big=QLabel(value); big.setObjectName('metric'); big.setStyleSheet(f'color:{accent};font-size:27px;font-weight:750;'); tile.layout().addWidget(big); metrics.addWidget(tile,1)
         self.body.addLayout(metrics)
-        section=card(); section.layout().addWidget(QLabel('OVERALL TASK PROGRESS'))
-        bar=QProgressBar(); bar.setValue(round(done/total*100) if total else 0); section.layout().addWidget(bar); self.body.addWidget(section)
+        section=card(); section.layout().addWidget(QLabel('OVERALL ASSESSMENT PROGRESS'))
+        bar=QProgressBar(); bar.setValue(assessment_progress(rows)); section.layout().addWidget(bar); self.body.addWidget(section)
         toolbar=QHBoxLayout(); heading=QLabel('Upcoming deadlines'); heading.setStyleSheet('font-size:18px;font-weight:700;'); toolbar.addWidget(heading); toolbar.addStretch()
         add=QPushButton('+ New assignment'); add.setObjectName('primary'); add.clicked.connect(self.new_assignment); toolbar.addWidget(add)
         self.body.addLayout(toolbar)
@@ -297,12 +302,13 @@ class MainWindow(QMainWindow):
         sub=QLabel('Your dedicated workspace for '+course+' assignments and tasks.')
         sub.setObjectName('muted'); self.body.addWidget(sub)
         stats=QHBoxLayout()
-        for label,value in [('ASSESSMENTS',str(len(rows))),('TASKS COMPLETED',f'{done}/{total}'),('CLASS PROGRESS',f'{round(100*done/total) if total else 0}%')]:
+        for label,value in [('ASSESSMENTS',str(len(rows))),('TASKS COMPLETED',f'{done}/{total}'),('CLASS PROGRESS',f'{assessment_progress(rows)}%')]:
             tile=card(); caption=QLabel(label); caption.setObjectName('muted'); tile.layout().addWidget(caption)
             number=QLabel(value); number.setObjectName('metric'); tile.layout().addWidget(number); stats.addWidget(tile,1)
         self.body.addLayout(stats)
         overall=card(); overall.layout().addWidget(QLabel('Overall class progress'))
-        overall.layout().addWidget(progress({'completed':done,'total':total})); self.body.addWidget(overall)
+        class_bar=QProgressBar(); class_bar.setRange(0,100); class_bar.setValue(assessment_progress(rows))
+        overall.layout().addWidget(class_bar); self.body.addWidget(overall)
         line=QHBoxLayout(); line.addWidget(QLabel('Assessments')); line.addStretch()
         add=QPushButton('+ New assignment'); add.setObjectName('primary')
         add.clicked.connect(lambda:self.new_assignment(course)); line.addWidget(add); self.body.addLayout(line)

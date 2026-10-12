@@ -1,3 +1,9 @@
+## v1.6.0
+- Assessment cards show 100% when status is Completed, regardless of subtasks.
+- Class and dashboard progress bars now count completed assessments.
+- Subtask completion remains a separate metric.
+- Keeps the same installer AppId and existing SQLite data.
+
 # Changelog
 
 ## v1.3.0
