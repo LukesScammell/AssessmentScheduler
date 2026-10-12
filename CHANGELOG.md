@@ -35,3 +35,5 @@
 - Assessment progress reflects completed stages, or 100% when the overall assessment is completed.
 - Reusable dialogs, widgets, theme and submission manager extracted from main.py.
 - Existing database and course grades are preserved through additive SQLite migrations.
+
+- Added NMIT AC-NMIT-06 estimated letter grades (A+ through E) to course pages and Grades page; ungraded work is excluded from the current average.

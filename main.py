@@ -12,6 +12,7 @@ from app.theme import STYLE
 from app.widgets import STATUSES, clear, card, progress, assessment_progress, TaskCard, DropColumn
 from app.dialogs import AssignmentDialog
 from app.submission_ui import SubmissionManager
+from app.grade_estimates import course_estimate, letter_grade
 
 APP_VERSION = '1.7.0'
 
@@ -191,6 +192,16 @@ class MainWindow(QMainWindow):
             tile=card(); caption=QLabel(label); caption.setObjectName('muted'); tile.layout().addWidget(caption)
             number=QLabel(value); number.setObjectName('metric'); tile.layout().addWidget(number); stats.addWidget(tile,1)
         self.body.addLayout(stats)
+        estimate=course_estimate(rows)
+        grade_box=card(); grade_box.layout().addWidget(QLabel('ESTIMATED COURSE GRADE'))
+        if estimate['band']:
+            letter, classification=estimate['band']
+            grade_box.layout().addWidget(QLabel(f"{letter} — {estimate['average']:.2f}% · {classification}"))
+            grade_box.layout().addWidget(QLabel(f"Based on {estimate['graded_weight']:g}% of course weighting graded; not a final grade."))
+            grade_box.layout().addWidget(QLabel(f"Earned course points: {estimate['points']:.2f}/100 · Entered assessment weight: {estimate['total_weight']:g}%"))
+        else:
+            grade_box.layout().addWidget(QLabel('Not enough graded assessments to estimate a result.'))
+        self.body.addWidget(grade_box)
         overall=card(); overall.layout().addWidget(QLabel('Overall class progress'))
         class_bar=QProgressBar(); class_bar.setRange(0,100); class_bar.setValue(assessment_progress(rows))
         overall.layout().addWidget(class_bar); self.body.addWidget(overall)
@@ -360,8 +371,18 @@ class MainWindow(QMainWindow):
             weights=sum(a['weight'] for a in graded)
             weighted=sum(a['weight']*a['grade']/100 for a in graded)
             total_weights=sum(a['weight'] for a in rows)
+            estimate=course_estimate(rows)
+            if estimate['band']:
+                letter, classification=estimate['band']
+                label=QLabel(f"Estimated grade: {letter} — {estimate['average']:.2f}% ({classification})")
+                label.setStyleSheet('font-size:16px;font-weight:700;')
+                self.body.addWidget(label)
+                self.body.addWidget(QLabel(f"Based on {estimate['graded_weight']:g}% of course weighting with grades; not a final result."))
+            else:
+                self.body.addWidget(QLabel('Estimated grade: Awaiting weighted assessment marks'))
             self.body.addWidget(QLabel(f'Average across graded assessment weights: {weighted/weights*100:.2f}%' if weights else 'No weighted grades recorded yet'))
             self.body.addWidget(QLabel(f'Points earned toward course total: {weighted:.2f} / 100 (assuming weights total 100%)'))
+            self.body.addWidget(QLabel('NMIT AC-NMIT-06: D (40–49%) and E (0–39%) are fail grades. Unmet course completion requirements can cap the final grade at D.'))
             self.body.addWidget(QLabel(f'Total assigned assessment weight: {total_weights:g}% (target: 100%)'))
             for a in rows:
                 row=QHBoxLayout(); row.addWidget(QLabel(a['title']),1)
