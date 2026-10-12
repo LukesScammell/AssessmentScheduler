@@ -29,3 +29,9 @@
 - Separate completed assessments on class pages and exclude them from upcoming deadlines and reminders.
 - Show weighted course averages and percentage points earned toward the course total.
 - Keep the same installer AppId and migrate the existing SQLite database without deleting records.
+
+## v1.7.0 — Submission stages and modular architecture
+- Multiple submission stages per assessment with independent due dates, statuses, and notes.
+- Assessment progress reflects completed stages, or 100% when the overall assessment is completed.
+- Reusable dialogs, widgets, theme and submission manager extracted from main.py.
+- Existing database and course grades are preserved through additive SQLite migrations.

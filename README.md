@@ -2,7 +2,7 @@
 
 Offline-first Windows desktop app for managing university courses, assessments and study time.
 
-## Features (v1.3.0)
+## Features (v1.7.0)
 
 - Separate course pages, notes, assignments and completion progress
 - Task checklist with Kanban statuses, priority and optional due dates
@@ -39,3 +39,8 @@ When adding an assessment, choose its status (including **Completed** for past w
 For example, **58/70** is **82.86%**. At a **40%** course weight, that earns **33.14 percentage points** toward the final course total. Previously stored percentage-only grades are retained until you explicitly replace them with marks.
 
 **Upgrade safety:** Use **Settings → Back up all app data** before installing a test build. The SQLite database is stored outside the application installation folder and the Inno Setup AppId is unchanged.
+
+### Submission stages (v1.7.0)
+Open a class, select **Submissions & tasks** for an assessment, then add stages such as Design, Review and Final Submission. Each stage has its own date, status and notes. Each stage can store its own earned/possible marks and an optional confirmed weighting within the parent assessment. The parent retains its course weighting. A stage result does not automatically change the parent grade. If all stage weights total 100% and all stages are graded, you can explicitly apply the calculated parent grade. WEB701 Design (15%), Evaluate (25%), and Develop (60%) are separately course-weighted graded milestones, not three equally weighted stages. DAT502 reports/tests belong to their respective 40%/60% assessments, but the course guide does not specify their internal mark splits.
+
+The SDV602 course timetable lists A1 Design Specification (7 August), A1 Review (20 August), and A1 Submission (4 September), while its assessment table lists the overall Assessment 1 deadline as 28 August. Verify individual stage deadlines in Moodle before entering them.

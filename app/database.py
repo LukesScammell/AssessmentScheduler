@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from pathlib import Path
+from app.submissions import SubmissionRepository
 
 APP_DIR = Path(os.getenv('LOCALAPPDATA') or (Path.home() / '.local' / 'share')) / 'AssessmentScheduler'
 DB_PATH = APP_DIR / 'assessments.db'
@@ -41,6 +42,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         ''')
         self.conn.commit()
+        self.submissions = SubmissionRepository(self.conn)
 
     def courses(self):
         return [r['code'] for r in self.conn.execute('SELECT code FROM courses ORDER BY code')]
@@ -49,10 +51,11 @@ class Database:
         with self.conn: self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)',(code,))
 
     def assignments(self):
-        return self.conn.execute('''SELECT a.*, COUNT(t.id) total,
+        rows = self.conn.execute('''SELECT a.*, COUNT(t.id) total,
           COALESCE(SUM(CASE WHEN t.status='Completed' THEN 1 ELSE 0 END),0) completed
           FROM assignments a LEFT JOIN tasks t ON t.assignment_id=a.id
           GROUP BY a.id ORDER BY a.due, a.id''').fetchall()
+        return [dict(r, progress_fraction=self.submissions.progress(r['id'],r['status'])) for r in rows]
 
     def assignment(self, aid):
         return self.conn.execute('SELECT * FROM assignments WHERE id=?', (aid,)).fetchone()

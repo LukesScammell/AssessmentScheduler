@@ -8,134 +8,19 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QDialogButtonBox, QFormLayout, QDateTimeEdit, QMessageBox, QCalendarWidget,
     QComboBox, QProgressBar, QTabWidget, QInputDialog, QSpinBox, QDoubleSpinBox, QCheckBox, QFileDialog, QSystemTrayIcon)
 from app.database import Database
+from app.theme import STYLE
+from app.widgets import STATUSES, clear, card, progress, assessment_progress, TaskCard, DropColumn
+from app.dialogs import AssignmentDialog
+from app.submission_ui import SubmissionManager
 
-APP_VERSION = '1.6.0'
-STATUSES = ('To Do', 'In Progress', 'Completed')
+APP_VERSION = '1.7.0'
+
 COURSE_COLORS = {'NET502':'#38bdf8','DAT502':'#a78bfa','SDV602':'#34d399','WEB701':'#fb923c'}
-STYLE = '''
-QWidget { background:#0b1220; color:#e6edf8; font: 13px 'Segoe UI'; }
-QLabel#heading { font-size:29px; font-weight:750; padding:8px 0 2px 0; }
-QLabel#muted { color:#9cabc1; }
-QLabel#metric { font-size:26px; font-weight:750; }
-QFrame#card { background:#172236; border:1px solid #2a3b55; border-radius:13px; }
-QFrame#card QLabel { background:transparent; }
-QFrame#sidebar { background:#101b2d; border:1px solid #263751; border-radius:14px; }
-QFrame#sidebar QLabel { background:transparent; }
-QPushButton { background:#253650; border:1px solid #30435f; border-radius:9px; padding:10px 13px; font-weight:550; }
-QPushButton:hover { background:#334969; }
-QPushButton#primary { background:#3575ed; border:1px solid #4c88fa; color:white; font-weight:700; }
-QPushButton#primary:hover { background:#2865d5; }
-QPushButton#nav { text-align:left; padding:12px 14px; background:transparent; border:0; }
-QPushButton#nav:hover { background:#243853; }
-QPushButton#nav[active="true"] { background:#27466f; color:#b6d6ff; }
-QLabel#section { color:#93a8c4; font-size:11px; font-weight:800; letter-spacing:1px; padding:10px 0 3px 0; }
-QLineEdit,QTextEdit,QComboBox,QDateTimeEdit { background:#101a2b; border:1px solid #3b4c67; border-radius:8px; padding:8px; }
-QProgressBar { background:#26354b; border:0; border-radius:6px; text-align:center; height:17px; font-weight:650; }
-QProgressBar::chunk { background:#38bda6; border-radius:6px; }
-QScrollArea { border:0; background:transparent; }
-QCalendarWidget QWidget { alternate-background-color:#1a2a40; }
-QCalendarWidget QToolButton { background:#253650; }
-QDialog { background:#101b2d; }
-'''
 
-def clear(layout):
-    while layout.count():
-        item = layout.takeAt(0)
-        if item.widget(): item.widget().deleteLater()
-        elif item.layout(): clear(item.layout())
-
-def card():
-    f = QFrame(); f.setObjectName('card'); f.setLayout(QVBoxLayout()); f.layout().setSpacing(8)
-    return f
-
-def progress(row):
-    """Assessment completion, independent of task progress."""
-    p = QProgressBar(); p.setRange(0,100)
-    p.setValue(100 if row['status'] == 'Completed' else 0)
-    return p
-
-def assessment_progress(rows):
-    return round(100 * sum(row['status'] == 'Completed' for row in rows) / len(rows)) if rows else 0
-
-class AssignmentDialog(QDialog):
-    def __init__(self, parent, record=None):
-        super().__init__(parent)
-        self.setWindowTitle('Edit assignment' if record else 'New assignment')
-        self.resize(440, 310)
-        layout=QFormLayout(self)
-        self.course=QLineEdit(record['course'] if record else '')
-        self.title=QLineEdit(record['title'] if record else '')
-        self.due=QDateTimeEdit(); self.due.setCalendarPopup(True)
-        self.due.setDisplayFormat('dd MMM yyyy HH:mm')
-        self.due.setDateTime(datetime.fromisoformat(record['due']) if record else datetime.now().replace(second=0,microsecond=0))
-        self.notes=QTextEdit(record['notes'] if record else '')
-        self.status=QComboBox(); self.status.addItems(['Not Started','In Progress','Completed'])
-        if record: self.status.setCurrentText(record['status'])
-        layout.addRow('Course',self.course); layout.addRow('Assessment',self.title)
-        layout.addRow('Deadline',self.due); layout.addRow('Status',self.status); layout.addRow('Notes',self.notes)
-        if not record:
-            self.weight=QDoubleSpinBox(); self.weight.setRange(0,100); self.weight.setDecimals(2); self.weight.setSuffix('%')
-            self.has_grade=QCheckBox('Grade received (optional)')
-            self.earned=QDoubleSpinBox(); self.earned.setRange(0,100000); self.earned.setDecimals(2)
-            self.possible=QDoubleSpinBox(); self.possible.setRange(0.01,100000); self.possible.setValue(100); self.possible.setDecimals(2)
-            layout.addRow('Assessment weight',self.weight); layout.addRow(self.has_grade)
-            layout.addRow('Marks earned',self.earned); layout.addRow('Marks possible',self.possible)
-        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self.validate); buttons.rejected.connect(self.reject); layout.addRow(buttons)
-
-    def validate(self):
-        if not self.course.text().strip() or not self.title.text().strip():
-            QMessageBox.warning(self,'Missing details','Enter both a course and an assessment title.')
-        else: self.accept()
-
-    def values(self):
-        return (self.course.text().strip(),self.title.text().strip(),self.due.dateTime().toString('yyyy-MM-ddTHH:mm:ss'),self.notes.toPlainText(),self.status.currentText())
-
-class TaskCard(QFrame):
-    def __init__(self, task, owner):
-        super().__init__(); self.task=task; self.owner=owner; self.setObjectName('card')
-        layout=QVBoxLayout(self)
-        name=QLabel(task['title']); name.setWordWrap(True); layout.addWidget(name)
-        sub=QLabel(f"{task['course']} · {task['assignment_title']} · {task['priority']} priority" + (f" · due {task['due']}" if task['due'] else '')); sub.setWordWrap(True)
-        sub.setStyleSheet('color:#9ca3af'); layout.addWidget(sub)
-        buttons=QHBoxLayout()
-        combo=QComboBox(); combo.addItems(STATUSES); combo.setCurrentText(task['status'])
-        combo.currentTextChanged.connect(lambda status,tid=task['id']: owner.move_task(tid,status))
-        buttons.addWidget(combo)
-        delete=QPushButton('×'); delete.setFixedWidth(34)
-        delete.clicked.connect(lambda _,tid=task['id']:owner.remove_task(tid)); buttons.addWidget(delete)
-        layout.addLayout(buttons)
-
-    def mouseMoveEvent(self,event):
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            drag=QDrag, QIcon(self); mime=QMimeData(); mime.setText(f"assessment-task:{self.task['id']}")
-            drag.setMimeData(mime); drag.exec(Qt.DropAction.MoveAction)
-        super().mouseMoveEvent(event)
-
-class DropColumn(QFrame):
-    def __init__(self,status,owner):
-        super().__init__(); self.status=status; self.owner=owner
-        self.setAcceptDrops(True); self.setObjectName('card')
-        self.setMinimumWidth(235)
-        self.layout_=QVBoxLayout(self)
-        title=QLabel(status); title.setStyleSheet('font-weight:700;font-size:16px;'); self.layout_.addWidget(title)
-        self.cards=QVBoxLayout(); self.layout_.addLayout(self.cards); self.layout_.addStretch()
-
-    def dragEnterEvent(self,event):
-        if event.mimeData().text().startswith('assessment-task:'): event.acceptProposedAction()
-
-    def dragMoveEvent(self,event):
-        if event.mimeData().text().startswith('assessment-task:'): event.acceptProposedAction()
-
-    def dropEvent(self,event):
-        try:
-            tid=int(event.mimeData().text().split(':',1)[1]); self.owner.move_task(tid,self.status)
-            event.acceptProposedAction()
-        except (ValueError,IndexError): event.ignore()
 
 class MainWindow(QMainWindow):
     def __init__(self):
-        super().__init__(); self.db=Database(); self.setWindowTitle(f'Assessment Scheduler v{APP_VERSION}')
+        super().__init__(); self.db=Database(); self.submission_manager=SubmissionManager(self); self.setWindowTitle(f'Assessment Scheduler v{APP_VERSION}')
         self.resize(1180,760); self.selected=None; self.page='Dashboard'; self.course_filter='All courses'; self.remaining=0; self.timer_paused=False; self.timer_course=''; self.timer_minutes=25
         self.timer=QTimer(self); self.timer.timeout.connect(self.timer_tick)
         self.tray=QSystemTrayIcon(self); self.tray.setIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon)); self.tray.show()
@@ -288,7 +173,7 @@ class MainWindow(QMainWindow):
         for row in sorted(rows,key=lambda r:(r['status']=='Completed',r['due'])):
             f=self.assignment_card(row,False)
             buttons=QHBoxLayout()
-            for label,callback in [('Open tasks',lambda aid=row['id']:self.show_details(aid)),
+            for label,callback in [('Submissions & tasks',lambda aid=row['id']:self.show_details(aid)),
                 ('Edit',lambda aid=row['id']:self.edit_assignment(aid)),
                 ('Delete',lambda aid=row['id']:self.remove_assignment(aid))]:
                 btn=QPushButton(label); btn.clicked.connect(lambda _,cb=callback:cb()); buttons.addWidget(btn)
@@ -328,7 +213,7 @@ class MainWindow(QMainWindow):
     def course_assignment_card(self,row):
         tile=self.assignment_card(row,False)
         actions=QHBoxLayout()
-        for label,action in [('Manage tasks',lambda aid=row['id']:self.show_details(aid)),
+        for label,action in [('Submissions & tasks',lambda aid=row['id']:self.show_details(aid)),
                              ('Edit',lambda aid=row['id']:self.edit_assignment(aid)),
                              ('Set grade',lambda aid=row['id']:self.edit_grade(aid)),
                              ('Delete',lambda aid=row['id']:self.remove_assignment(aid))]:
@@ -346,7 +231,9 @@ class MainWindow(QMainWindow):
         if hasattr(self,'detail') and self.detail:
             self.body.removeWidget(self.detail); self.detail.deleteLater()
         self.detail=card(); self.body.addWidget(self.detail)
-        lay=self.detail.layout(); lay.addWidget(QLabel(f"Tasks for {record['course']} — {record['title']}"))
+        lay=self.detail.layout(); lay.addWidget(QLabel(f"{record['course']} — {record['title']}"))
+        self.submission_manager.display(aid,lay)
+        lay.addWidget(QLabel('TASKS'))
         for task in self.db.tasks(aid):
             row=QHBoxLayout(); row.addWidget(QLabel(task['title']),1)
             combo=QComboBox(); combo.addItems(STATUSES); combo.setCurrentText(task['status'])
