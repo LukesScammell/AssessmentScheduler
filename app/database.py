@@ -187,3 +187,39 @@ class Database:
                     self.conn.execute('INSERT INTO assignments(course,title,due,notes) VALUES (?,?,?,?)', (course,title,due,notes))
                     added += 1
         return added
+
+    def import_course_guide_assessments(self):
+        """Import 2026 course-guide deadlines without changing existing marks or statuses.
+
+        DAT502 report/test components have unknown individual weightings: use zero
+        until the student confirms how the 40%/60% assessment weights are divided.
+        """
+        examples = [
+            ('SDV602', 'Assessment 1 — Python project', '2026-08-28T23:59:00', 40, 'Assessment 1: 40%. Course assessment guide states 28 August 2026, 11:59 PM. Timetable also lists an A1 submission on 4 September; confirm with Moodle.'),
+            ('SDV602', 'Assessment 2 — Design, implementation and reflection', '2026-11-13T23:59:00', 60, 'Assessment 2: 60%. Course assessment guide states 13 November 2026, 11:59 PM.'),
+            ('WEB701', 'Assignment 1 — DESIGN (Milestone 1)', '2026-08-14T12:00:00', 15, 'Design milestone of Assignment 1; contributes 15% of course grade.'),
+            ('WEB701', 'Assignment 1 — EVALUATE (Milestone 2)', '2026-09-25T12:00:00', 25, 'Evaluate milestone of Assignment 1; contributes 25% of course grade. Assignment 1 total is 40%.'),
+            ('WEB701', 'Assignment 2 — DEVELOP (Milestone 3)', '2026-11-18T12:00:00', 60, 'Final development submission; contributes 60% of course grade.'),
+            ('DAT502', 'Assessment 1 — Database design report', '2026-08-28T17:00:00', 0, 'Assessment 1 overall is worth 40% and includes this report and a test on 1 September, 1–3 PM. Individual component weights are not specified; enter weights after confirmation.'),
+            ('DAT502', 'Assessment 1 — Database test', '2026-09-01T13:00:00', 0, 'Test 1–3 PM. Part of Assessment 1 (40% combined with report). Individual component weights not specified.'),
+            ('DAT502', 'Assessment 2 — Database build report', '2026-11-06T17:00:00', 0, 'Assessment 2 overall is worth 60% and includes this report and a test on 13 November, 9 AM–noon. Individual component weights are not specified.'),
+            ('DAT502', 'Assessment 2 — Database test', '2026-11-13T09:00:00', 0, 'Test 9 AM–noon. Part of Assessment 2 (60% combined with report). Individual component weights not specified.'),
+        ]
+        added = 0
+        with self.conn:
+            for course, title, due, weight, notes in examples:
+                self.conn.execute('INSERT OR IGNORE INTO courses(code) VALUES (?)', (course,))
+                day = due[:10]
+                # Existing imported starter entries can have different names but the same deadline.
+                existing = self.conn.execute('SELECT id,title,due,weight,notes FROM assignments WHERE course=? AND substr(due,1,10)=? ORDER BY id LIMIT 1', (course, day)).fetchone()
+                if existing:
+                    # Keep all user-edited titles, notes, grades, statuses and existing weights.
+                    # Fix only the known old SDV602 placeholder noon deadline.
+                    if course == 'SDV602' and day == '2026-11-13' and existing['due'] == '2026-11-13T12:00:00' and 'placeholder' in existing['notes'].lower():
+                        self.conn.execute('UPDATE assignments SET due=? WHERE id=?', (due, existing['id']))
+                    if weight and existing['weight'] == 0:
+                        self.conn.execute('UPDATE assignments SET weight=? WHERE id=?', (weight, existing['id']))
+                    continue
+                self.conn.execute('INSERT INTO assignments(course,title,due,notes,status,weight) VALUES (?,?,?,?,?,?)', (course,title,due,notes,'Not Started',weight))
+                added += 1
+        return added

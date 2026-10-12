@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QComboBox, QProgressBar, QTabWidget, QInputDialog, QSpinBox, QDoubleSpinBox, QCheckBox, QFileDialog, QSystemTrayIcon)
 from app.database import Database
 
-APP_VERSION = '1.4.0'
+APP_VERSION = '1.5.0'
 STATUSES = ('To Do', 'In Progress', 'Completed')
 COURSE_COLORS = {'NET502':'#38bdf8','DAT502':'#a78bfa','SDV602':'#34d399','WEB701':'#fb923c'}
 STYLE = '''
@@ -215,6 +215,8 @@ class MainWindow(QMainWindow):
             empty.setObjectName('muted'); self.body.addWidget(empty)
         sample=QPushButton('Import my 2026 assessment dates (6)')
         sample.clicked.connect(self.import_assessments); self.body.addWidget(sample)
+        guides=QPushButton('Import 2026 course-guide assessments (SDV602, WEB701, DAT502)')
+        guides.clicked.connect(self.import_course_guides); self.body.addWidget(guides)
 
     def import_assessments(self):
         answer=QMessageBox.question(self,'Import assessment dates',
@@ -224,6 +226,17 @@ class MainWindow(QMainWindow):
         if answer==QMessageBox.StandardButton.Yes:
             count=self.db.import_starter_assessments()
             QMessageBox.information(self,'Import complete',f'{count} assessment(s) added. Existing data was preserved.')
+            self.refresh()
+
+    def import_course_guides(self):
+        answer=QMessageBox.question(self,'Import course-guide assessments',
+            'Add SDV602, WEB701 and DAT502 assessment deadlines from the 2026 course guides?\n\n'
+            'Existing assignments, marks, statuses and notes will be kept. Matching dates will not be duplicated.\n\n'
+            'DAT502 report/test component weights are unspecified and will start at 0 until you confirm them.\n'
+            'SDV602 Assessment 1 has conflicting guide dates; the formal assessment table date is used.')
+        if answer==QMessageBox.StandardButton.Yes:
+            count=self.db.import_course_guide_assessments()
+            QMessageBox.information(self,'Import complete',f'{count} new assessment(s) added. Existing marks were not changed.')
             self.refresh()
 
     def course_selector(self, callback):
